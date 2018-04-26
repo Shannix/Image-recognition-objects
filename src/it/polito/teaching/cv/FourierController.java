@@ -7,6 +7,7 @@ import java.util.List;
 import org.opencv.core.Core;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
+import org.opencv.core.MatOfPoint;
 import org.opencv.core.Rect;
 import org.opencv.core.Scalar;
 import org.opencv.imgcodecs.Imgcodecs;
@@ -19,17 +20,10 @@ import javafx.scene.image.ImageView;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 
-/**
- * The controller associated to the only view of our application. The
- * application logic is implemented here. It handles the button for opening an
- * image and perform all the operation related to the Fourier transformation and
- * antitransformation.
- * 
- * @author <a href="mailto:luigi.derussis@polito.it">Luigi De Russis</a>
- * @version 2.0 (2017-03-10)
- * @since 1.0 (2013-12-11)
- * 
- */
+import org.opencv.imgproc.Imgproc;
+import org.opencv.core.Size;
+
+
 public class FourierController
 {
 	// images to show in the view
@@ -55,7 +49,6 @@ public class FourierController
 	private List<Mat> planes;
 	// the final complex image
 	private Mat complexImage;
-	
 	/**
 	 * Init the needed variables
 	 */
@@ -63,8 +56,9 @@ public class FourierController
 	{
 		this.fileChooser = new FileChooser();
 		this.image = new Mat();
-		this.planes = new ArrayList<>();
+		this.planes = new ArrayList<>(); 
 		this.complexImage = new Mat();
+		this.transformButton.setDisable(false);
 	}
 	
 	/**
@@ -78,13 +72,13 @@ public class FourierController
 		if (file != null)
 		{
 			// read the image in gray scale
-			this.image = Imgcodecs.imread(file.getAbsolutePath(), Imgcodecs.CV_LOAD_IMAGE_GRAYSCALE);
+			this.image = Imgcodecs.imread(file.getAbsolutePath());
 			// show the image
 			this.updateImageView(originalImage, Utils.mat2Image(this.image));
 			// set a fixed width
 			this.originalImage.setFitWidth(250);
 			// preserve image ratio
-			this.originalImage.setPreserveRatio(true);
+			
 			// update the UI
 			this.transformButton.setDisable(false);
 			
@@ -94,46 +88,81 @@ public class FourierController
 			{
 				this.planes.clear();
 				this.transformedImage.setImage(null);
-				this.antitransformedImage.setImage(null);
 			}
 			
 		}
 	}
 	
-	/**
-	 * The action triggered by pushing the button for apply the dft to the
-	 * loaded image
-	 */
+	
 	@FXML
 	protected void transformImage()
 	{
-		// optimize the dimension of the loaded image
-		Mat padded = this.optimizeImageDim(this.image);
-		padded.convertTo(padded, CvType.CV_32F);
-		// prepare the image planes to obtain the complex image
-		this.planes.add(padded);
-		this.planes.add(Mat.zeros(padded.size(), CvType.CV_32F));
-		// prepare a complex image for performing the dft
-		Core.merge(this.planes, this.complexImage);
+		Mat blurredImage = new Mat();
+		Mat hsvImage = new Mat();
+		Mat mask = new Mat();
+		Mat morphOutput = new Mat();
+	//	Mat srcImg = Imgcodecs.imread("/Users/shannix/eclipse-workspace/test/src/test/tm.jpg");
+		Mat srcImg = this.image;
 		
-		// dft
-		Core.dft(this.complexImage, this.complexImage);
-		
-		// optimize the image resulting from the dft operation
-		Mat magnitude = this.createOptimizedMagnitude(this.complexImage);
-		
-		// show the result of the transformation as an image
-		this.updateImageView(transformedImage, Utils.mat2Image(magnitude));
-		// set a fixed width
-		this.transformedImage.setFitWidth(250);
-		// preserve image ratio
-		this.transformedImage.setPreserveRatio(true);
-		
-		// enable the button for performing the antitransformation
-		this.antitransformButton.setDisable(false);
-		// disable the button for applying the dft
-		this.transformButton.setDisable(true);
+         Imgproc.blur(srcImg, blurredImage, new Size(7, 7));
+         Imgproc.cvtColor(blurredImage, hsvImage, Imgproc.COLOR_BGR2HSV);
+         
+        
+         Scalar minValues = new Scalar(15,60,50);       
+         Scalar maxValues = new Scalar(180, 255,255);
+         
+         String valuesToPrint = "Hue range: " + minValues.val[0] + "-" + maxValues.val[0]
+        		 + "\tSaturation range: " + minValues.val[1] + "-" + maxValues.val[1] + "\tValue range: "
+        		 + minValues.val[2] + "-" + maxValues.val[2];
+        		 
+         System.out.println(valuesToPrint);
+          
+         
+         Core.inRange(hsvImage, minValues, maxValues, mask);
+         
+         Mat dilateElement = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new Size(24, 24));
+         Mat erodeElement = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, new Size(12, 12));
+
+         Imgproc.erode(mask, morphOutput, erodeElement);
+         Imgproc.erode(mask, morphOutput, erodeElement);
+
+         Imgproc.dilate(mask, morphOutput, dilateElement);
+         Imgproc.dilate(mask, morphOutput, dilateElement);
+ 
+         
+         this.transformedImage.setFitWidth(250);
+         this.updateImageView(transformedImage, Utils.mat2Image(morphOutput));
+         this.originalImage.setFitWidth(250);
+         this.updateImageView(originalImage, Utils.mat2Image(this.findAndDrawBalls(morphOutput, srcImg)));
+        
 	}
+	
+	
+	
+	
+	private Mat findAndDrawBalls(Mat maskedImage, Mat frame)
+	{
+		// init
+		List<MatOfPoint> contours = new ArrayList<>();
+		Mat hierarchy = new Mat();
+		
+		// find contours
+		Imgproc.findContours(maskedImage, contours, hierarchy, Imgproc.RETR_CCOMP, Imgproc.CHAIN_APPROX_SIMPLE);
+		
+		// if any contour exist...
+		if (hierarchy.size().height > 0 && hierarchy.size().width > 0)
+		{
+			// for each contour, display it in blue
+			for (int idx = 0; idx >= 0; idx = (int) hierarchy.get(0, idx)[0])
+			{
+				Imgproc.drawContours(frame, contours, idx, new Scalar(250, 0, 0));
+			}
+		}
+		
+		return frame;
+	}
+	
+	
 	
 	/**
 	 * The action triggered by pushing the button for apply the inverse dft to

@@ -31,7 +31,6 @@
 			</padding>
 			<Button alignment="center" text="Load Image" onAction="#loadImage"/>
 			<Button fx:id="transformButton" alignment="center" text="Apply transformation" onAction="#transformImage" disable="true" />
-			<Button fx:id="antitransformButton" alignment="center" text="Apply anti transformation" onAction="#antitransformImage" disable="true" />
 		</HBox>
 	</bottom>
 </BorderPane>
